@@ -158,7 +158,7 @@ source .venv/bin/activate
 # pip install "fastapi[standard]" uvicorn httpx pymongo python-dotenv
 
 start_ai_service() {
-  echo "==> AI service (8090)"
+  echo "==> AI service (8091)"
 
   if lsof -i :"$PORT_AI" >/dev/null 2>&1; then
     echo "   ⚠️ Port $PORT_AI déjà utilisé (skip)"

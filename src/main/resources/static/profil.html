@@ -235,6 +235,28 @@
       pointer-events: none;
     }
 
+    /* Force le champ password à garder le style dark */
+    input:-webkit-autofill,
+    input:-webkit-autofill:hover,
+    input:-webkit-autofill:focus,
+    textarea:-webkit-autofill,
+    textarea:-webkit-autofill:hover,
+    textarea:-webkit-autofill:focus,
+    select:-webkit-autofill,
+    select:-webkit-autofill:hover,
+    select:-webkit-autofill:focus{
+      -webkit-text-fill-color: rgba(255,255,255,.92) !important;
+      -webkit-box-shadow: 0 0 0px 1000px rgba(255,255,255,.06) inset !important;
+      transition: background-color 9999s ease-in-out 0s;
+    }
+
+    /* Optionnel : quand il est focus, éviter le "bleu clair" */
+    input.form-control:focus{
+      background: rgba(255,255,255,.08) !important;
+      color: rgba(255,255,255,.92) !important;
+    }
+
+
 
 
   </style>
@@ -429,9 +451,15 @@
     let userInfo = {};
 
     const API_BASE =
-      (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
-        ? "http://localhost:8082"
-        : "https://stephanedinahet.fr";
+      window.__API_BASE_ACTIVE__ ||
+      ((location.hostname === "localhost" || location.hostname === "127.0.0.1")
+        ? `http://${location.hostname}:8082`
+        : "https://stephanedinahet.fr");
+
+    //const API_BASE =
+    //  (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
+    //    ? "http://localhost:8082"
+    //    : "https://stephanedinahet.fr";
 
     const ME_URL = `${API_BASE}/api/auth/me`;
     const TOKEN_URL = `${API_BASE}/api/auth/token`; // optionnel
@@ -454,6 +482,27 @@
     const okText = document.getElementById("okText");
     const errBox = document.getElementById("errBox");
     const errText= document.getElementById("errText");
+
+    // --- CSRF (comme POST/PUT tickets) ---
+    axios.defaults.withCredentials = true;
+    // (optionnel mais propre)
+    axios.defaults.xsrfCookieName = "XSRF-TOKEN";
+    axios.defaults.xsrfHeaderName = "X-XSRF-TOKEN";
+
+    function getCookie(name) {
+      const m = document.cookie.match(new RegExp("(^| )" + name + "=([^;]+)"));
+      return m ? decodeURIComponent(m[2]) : null;
+    }
+
+    async function ensureCsrf(baseUrl) {
+      try {
+        // force Spring à générer / renvoyer le cookie XSRF-TOKEN
+        await axios.get(`${baseUrl}/api/auth/csrf`, { withCredentials: true });
+      } catch (e) {
+        // si ça échoue, on laisse le delete gérer l'erreur
+        console.warn("CSRF init failed:", e?.message || e);
+      }
+    }
 
     function showOk(msg){
       errBox.classList.add("d-none");
@@ -528,8 +577,13 @@
       lastName: lastEl.value.trim(),
       currentPassword: password
     };
-
-
+    //const payload = {
+    //  id: userId,
+    //  email: userInfo.email,        // ⚠️ souvent obligatoire côté JPA
+    //  firstName: firstEl.value.trim(),
+    //  lastName: lastEl.value.trim(),
+    //  password: password            // ✅ NOM ATTENDU
+    //};
 
       try {
         setLoading(true);
@@ -538,10 +592,22 @@
         const headers = { "Content-Type": "application/json" };
         if (jwt) headers["Authorization"] = `Bearer ${jwt}`;
 
-        await axios.put(`${USERS_URL}/${userId}`, payload, {
-          withCredentials: true,
-          headers
+        //await axios.put(`${USERS_URL}/${userId}`, payload, {
+        //  withCredentials: true,
+        //  headers
+        //});
+
+        const res = await fetchWithRefresh(`${USERS_URL}/${userId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
         });
+
+        if (!res.ok) {
+          const txt = await res.text().catch(() => "");
+          throw { response: { status: res.status, data: { message: txt } } };
+        }
+
 
         showOk("Profil mis à jour avec succès. Redirection…");
         pwdEl.value = "";
@@ -632,14 +698,26 @@
         btnConfirm.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>Suppression...`;
 
         try {
-          await axios.delete(DELETE_ME_URL, {
-            withCredentials: true,
+          // ✅ Utilise fetch() patché par layout.js (CSRF + credentials + refresh)
+          const res = await fetch(DELETE_ME_URL, {
+            method: "DELETE",
             headers: { "Content-Type": "application/json" },
-            data: { currentPassword }
+            body: JSON.stringify({ currentPassword })
           });
 
+          if (!res.ok) {
+            const txt = await res.text().catch(() => "");
+            const msg = txt || `Erreur HTTP ${res.status}`;
+
+            if (res.status === 401) throw { status: 401, msg };
+            if (res.status === 400) throw { status: 400, msg };
+            if (res.status === 403) throw { status: 403, msg };
+
+            throw { status: res.status, msg };
+          }
+
           // Tentative de logout (optionnel)
-          try { await axios.post(LOGOUT_URL, {}, { withCredentials: true }); } catch(e){}
+          try { await fetch(LOGOUT_URL, { method: "POST" }); } catch(e){}
 
           // Nettoyage front
           try { localStorage.removeItem("token"); } catch(e){}
@@ -653,12 +731,14 @@
           }, 900);
 
         } catch (err) {
-          console.error("Erreur DELETE /me:", err?.response?.data || err.message);
+          console.error("Erreur DELETE /me:", err);
 
-          if (err?.response?.status === 401) {
+          if (err?.status === 401) {
             showDelErr("Session expirée. Merci de te reconnecter.");
-          } else if (err?.response?.status === 400) {
+          } else if (err?.status === 400) {
             showDelErr("Mot de passe incorrect.");
+          } else if (err?.status === 403) {
+            showDelErr("CSRF refusé (403). Vérifie que /api/auth/csrf répond bien et que le cookie XSRF-TOKEN est présent.");
           } else {
             showDelErr("Impossible de supprimer le compte. Réessaie.");
           }
@@ -668,6 +748,7 @@
         }
       });
     })();
+
 
     document.addEventListener("DOMContentLoaded", () => {
       const note = document.getElementById("emailNote");

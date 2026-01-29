@@ -13,6 +13,13 @@ pip install pymongo
 pip install "fastapi[standard]" uvicorn httpx pymongo python-dotenv
 python -m uvicorn ai:app --host 0.0.0.0 --port 8090
 
+http://localhost:8091/
+curl -i http://localhost:8091/
+curl -i http://localhost:8091/ai/health
+curl -s http://localhost:8091/ai/health | jq .model
+
+
+
 (.venv) uid7e@DESKTOP-PIOUMIU:/mnt/c/Users/Sté
 phane_HP/Documents/LOTO_API_v4-integrate_ia$ ip -4 addr show eth0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}'
 172.27.158.250

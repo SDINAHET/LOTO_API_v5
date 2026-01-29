@@ -22,7 +22,6 @@
       color: rgba(255,255,255,.92);
     }
 
-    /* ===== Layout (comme tickets.html) ===== */
     .app-shell{
       display: grid;
       grid-template-columns: 280px 1fr;
@@ -49,7 +48,6 @@
     }
     .muted{ color: rgba(255,255,255,.65); }
 
-    /* ===== Sidebar ===== */
     .sidebar{
       border-radius: 18px;
       border: 1px solid rgba(255,255,255,.10);
@@ -94,7 +92,6 @@
       }
     }
 
-    /* ===== Overlay mobile ===== */
     #overlay{
       position: fixed;
       inset: 0;
@@ -125,7 +122,6 @@
       .sidebar.open{ transform: translateX(0); }
     }
 
-    /* ===== Inputs ===== */
     .form-control{
       background: rgba(255,255,255,.06);
       border: 1px solid rgba(255,255,255,.12);
@@ -139,7 +135,6 @@
       color: rgba(255,255,255,.92);
     }
 
-    /* ===== Boutons ===== */
     .btn-soft{
       border-radius: 12px;
       font-weight: 900;
@@ -154,7 +149,6 @@
       font-weight: 950;
     }
 
-    /* ===== Alerts ===== */
     .alert{
       border-radius: 12px;
       border: 1px solid rgba(255,255,255,.12);
@@ -178,7 +172,6 @@
       box-shadow: 0 18px 50px rgba(0,0,0,.25);
     }
 
-    /* ===== Sélecteurs numéros ===== */
     .pick-grid{
       display: flex;
       flex-wrap: wrap;
@@ -220,16 +213,12 @@
       color:#fff;
     }
 
-
-    /* === HOVER = comme "selected" (uniquement si pas disabled) === */
     .pick-ball:hover:not(.selected):not(.disabled){
       background: rgba(59,130,246,.78);
       border-color: rgba(59,130,246,.90);
       color: #fff;
       transform: translateY(-1px);
     }
-
-    /* Hover rouge "comme selected" pour Chance */
     .pick-ball.chance:hover:not(.selected):not(.disabled){
       background: rgba(239,68,68,.86);
       border-color: rgba(239,68,68,.95);
@@ -237,14 +226,12 @@
       transform: translateY(-1px);
     }
 
-    /* === Etat désactivé (quand 5 numéros déjà choisis) === */
     .pick-ball.disabled{
       opacity: .35;
       cursor: not-allowed;
       transform: none !important;
     }
 
-    /* Empêche le hover d'ajouter un effet quand disabled */
     .pick-ball.disabled:hover{
       background: rgba(59,130,246,.16);
       border-color: rgba(255,255,255,.12);
@@ -254,16 +241,13 @@
       background: rgba(239,68,68,.14);
       border-color: rgba(239,68,68,.20);
     }
-
   </style>
 </head>
 
 <body>
-  <!-- Header injecté -->
   <div id="appHeader"></div>
 
   <div class="app-shell">
-    <!-- Sidebar -->
     <aside id="sidebar" class="sidebar">
       <div class="sidebar-inner">
         <div class="sidebar-title">Dashboard</div>
@@ -279,7 +263,6 @@
       </div>
     </aside>
 
-    <!-- Main -->
     <main>
       <section class="glass-panel">
         <div class="d-flex align-items-start justify-content-between flex-wrap gap-2">
@@ -292,7 +275,6 @@
           </a>
         </div>
 
-        <!-- Alerts (pas d'alert JS) -->
         <div class="alert alert-success d-none mt-3" id="okBox">
           <i class="fa-solid fa-circle-check me-2"></i>
           <span id="okText">OK</span>
@@ -338,28 +320,37 @@
     </main>
   </div>
 
-  <!-- overlay -->
   <div id="overlay"></div>
-
-  <!-- Footer injecté -->
   <div id="appFooter"></div>
 
-  <!-- Layout global -->
   <script src="layout.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
   <script>
     (function(){
-      // ===== API
+
+      function getCookie(name){
+        const m = document.cookie.match(new RegExp("(^|;\\s*)" + name + "=([^;]*)"));
+        return m ? decodeURIComponent(m[2]) : null;
+      }
+
+      axios.defaults.withCredentials = true;
+
+      async function ensureCsrf(base){
+        if (window.ensureCsrfToken) {
+          await window.ensureCsrfToken(base);
+        }
+      }
+
       const API_BASE =
-        (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
-          ? "http://localhost:8082"
-          : "https://stephanedinahet.fr";
+        window.__API_BASE_ACTIVE__ ||
+        ((location.hostname === "localhost" || location.hostname === "127.0.0.1")
+          ? `http://${location.hostname}:8082`
+          : "https://stephanedinahet.fr");
 
       const ME_URL      = `${API_BASE}/api/auth/me`;
       const API_TICKETS = `${API_BASE}/api/tickets`;
 
-      // ===== DOM
       const okBox  = document.getElementById("okBox");
       const okText = document.getElementById("okText");
       const errBox = document.getElementById("errBox");
@@ -373,12 +364,10 @@
       const submitBtn = document.getElementById("submitBtn");
       const form = document.getElementById("ticketForm");
 
-      // ===== State
-      let selectedNumbers = new Set(); // 5 numbers
-      let selectedChance = null;       // 1..10
+      let selectedNumbers = new Set();
+      let selectedChance = null;
       let userId = null;
 
-      // ===== UI helpers
       function showOk(msg){
         errBox.classList.add("d-none");
         okText.textContent = msg || "OK.";
@@ -403,7 +392,6 @@
         pickedChance.textContent = selectedChance != null ? String(selectedChance) : "—";
       }
 
-      // ===== Auth
       async function ensureAuth(){
         try{
           const res = await axios.get(ME_URL, { withCredentials: true });
@@ -424,14 +412,11 @@
           const n = Number(el.textContent);
           const isSelected = selectedNumbers.has(n);
 
-          // Si 5 atteints : on disable tous les non-sélectionnés
           if (maxReached && !isSelected) el.classList.add("disabled");
           else el.classList.remove("disabled");
         });
       }
 
-
-      // ===== Build pickers
       function buildNumberButtons(){
         numberSelection.innerHTML = "";
         for (let i = 1; i <= 49; i++){
@@ -440,22 +425,6 @@
           el.textContent = i;
 
           if (selectedNumbers.has(i)) el.classList.add("selected");
-
-          //el.addEventListener("click", () => {
-          //  if (selectedNumbers.has(i)){
-          //    selectedNumbers.delete(i);
-          //    el.classList.remove("selected");
-          //    updateHint();
-          //    return;
-          //  }
-          //  if (selectedNumbers.size >= 5){
-              // showErr("Maximum 5 numéros."); // optionnel
-          //    return;
-          //  }
-          //  selectedNumbers.add(i);
-          //  el.classList.add("selected");
-          //  updateHint();
-          //});
 
           el.addEventListener("click", () => {
             if (el.classList.contains("disabled")) return;
@@ -478,7 +447,6 @@
             updateDisabledNumbers();
           });
 
-
           numberSelection.appendChild(el);
         }
       }
@@ -500,9 +468,6 @@
         }
       }
 
-      updateDisabledNumbers();
-
-
       function setChance(i){
         selectedChance = i;
 
@@ -522,12 +487,39 @@
         buildNumberButtons();
         buildChanceButtons();
         updateHint();
+        updateDisabledNumbers();
       }
 
-      updateDisabledNumbers();
+      // ✅ extraction ID ticket créé (supporte plusieurs formats backend)
+      function extractCreatedTicketId(postResponse){
+        try{
+          const data = postResponse?.data;
 
+          const candidates = [
+            data?.id,
+            data?.ticketId,
+            data?.ticket?.id,
+            data?.data?.id,
+            data?.data?.ticketId
+          ];
 
-      // ===== Init
+          for (const c of candidates){
+            if (c !== null && c !== undefined && String(c).trim() !== "") return String(c);
+          }
+
+          // header Location: /api/tickets/{id}
+          const loc = postResponse?.headers?.location || postResponse?.headers?.Location;
+          if (loc && typeof loc === "string"){
+            const m = loc.match(/\/(\d+)\s*$/);
+            if (m && m[1]) return String(m[1]);
+          }
+
+          return null;
+        } catch {
+          return null;
+        }
+      }
+
       document.addEventListener("DOMContentLoaded", async () => {
         const auth = await ensureAuth();
         if (!auth) return;
@@ -535,9 +527,9 @@
         buildNumberButtons();
         buildChanceButtons();
         updateHint();
+        updateDisabledNumbers();
       });
 
-      // ===== Submit (POST)
       form.addEventListener("submit", async (e) => {
         e.preventDefault();
         errBox.classList.add("d-none");
@@ -566,22 +558,31 @@
         try{
           setLoading(true);
 
-          await axios.post(API_TICKETS, payload, {
+          await ensureCsrf(API_BASE);
+          const xsrf = getCookie("XSRF-TOKEN");
+
+          const resp = await axios.post(API_TICKETS, payload, {
             withCredentials: true,
             headers: {
               "Content-Type": "application/json",
-              "Accept": "application/json"
+              "Accept": "application/json",
+              ...(xsrf ? { "X-XSRF-TOKEN": xsrf } : {})
             }
           });
 
-          //showOk("Ticket ajouté avec succès. Redirection…");
-          //setTimeout(() => window.location.href = "tickets.html", 900);
-          //setTimeout(() => window.location.href = "tickets.html?burst=1", 1000);
-          //window.location.href = `tickets.html?burst=1&ts=${Date.now()}`;
-          showOk("Ticket mis à jour avec succès — Redirection…");
-            setTimeout(() => {
-              window.location.href = `tickets.html?burst=1&ts=${Date.now()}`;
-            }, 800);
+          const createdId = extractCreatedTicketId(resp);
+
+          showOk("Ticket ajouté avec succès — Redirection…");
+
+          setTimeout(() => {
+            const ts = Date.now();
+            if (createdId){
+              window.location.href = `tickets.html?burst=1&id=${encodeURIComponent(createdId)}&ts=${ts}`;
+            } else {
+              // fallback : comportement actuel (sans id)
+              window.location.href = `tickets.html?burst=1&ts=${ts}`;
+            }
+          }, 800);
 
           resetSelections();
         }catch(err){
@@ -600,7 +601,6 @@
   </script>
 
   <script src="cookies.js"></script>
-  <!-- IA (si tu l'utilises) -->
   <script src="ai-loader.js"></script>
 </body>
 </html>

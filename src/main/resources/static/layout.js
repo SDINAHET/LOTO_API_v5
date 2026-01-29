@@ -1,6 +1,8 @@
 /* layout.js
    Injecte header + footer + CSS du layout
-   Compatible cookie HttpOnly (JWT invisible côté JS)
+   ✅ Compatible cookie HttpOnly (JWT invisible côté JS)
+   ✅ CSRF activé (XSRF-TOKEN cookie + header X-XSRF-TOKEN sur POST/PUT/DELETE)
+   ✅ Refresh automatique sur 401 (fetch + axios) sans redirection immédiate
    Requis dans les pages qui contiennent :
    <div id="appHeader"></div>
    <div id="appFooter"></div>
@@ -14,14 +16,88 @@
       ? `http://${HOST}:8082`
       : "https://stephanedinahet.fr";
 
-  // ✅ Fallback en local : on tente aussi l’autre host
-  const API_BASE_FALLBACK =
-    (HOST === "localhost") ? "http://127.0.0.1:8082"
-    : (HOST === "127.0.0.1") ? "http://localhost:8082"
-    : null;
+  const API_BASE_FALLBACK = null; // ✅ désactiver en local
 
   const USERINFO_PATH = "/api/protected/userinfo";
   const LOGOUT_PATH = "/api/auth/logout";
+  const CSRF_PATH = "/api/auth/csrf";
+  const REFRESH_PATH = "/api/auth/refresh";
+
+  function getActiveBase() {
+    return window.__API_BASE_ACTIVE__ || API_BASE_PRIMARY;
+  }
+
+  /* =========================================================
+     Cookies helpers
+  ========================================================= */
+  function getCookie(name) {
+    const m = document.cookie.match(new RegExp("(^|;\\s*)" + name + "=([^;]*)"));
+    return m ? decodeURIComponent(m[2]) : null;
+  }
+
+  /* =========================================================
+     CSRF helpers
+  ========================================================= */
+  let csrfCached = null;
+
+  async function ensureCsrfToken(baseUrl) {
+    const fromCookie = getCookie("XSRF-TOKEN");
+    if (fromCookie) {
+      csrfCached = fromCookie;
+      return csrfCached;
+    }
+
+    try {
+      const res = await (window.__ORIGINAL_FETCH__ || fetch)(`${baseUrl}${CSRF_PATH}`, {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store"
+      });
+
+      if (res.ok) {
+        let token = null;
+        try {
+          const data = await res.json();
+          token = data?.token || null;
+        } catch {
+          // ignore
+        }
+
+        const cookie2 = getCookie("XSRF-TOKEN");
+        csrfCached = token || cookie2 || null;
+        return csrfCached;
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  }
+
+  function isUnsafeMethod(method) {
+    const m = String(method || "GET").toUpperCase();
+    return m === "POST" || m === "PUT" || m === "PATCH" || m === "DELETE";
+  }
+
+  async function withCsrfHeaders(options = {}, baseUrl) {
+    const method = (options.method || "GET").toUpperCase();
+    if (!isUnsafeMethod(method)) return options;
+
+    const base = baseUrl || getActiveBase();
+
+    let token = getCookie("XSRF-TOKEN");
+    if (!token) token = await ensureCsrfToken(base);
+    csrfCached = token || null;
+
+    const headers = new Headers(options.headers || {});
+    if (token) headers.set("X-XSRF-TOKEN", token);
+
+    const hasBody = options.body !== undefined && options.body !== null;
+    if (hasBody && !headers.has("Content-Type") && typeof options.body === "string") {
+      headers.set("Content-Type", "application/json");
+    }
+
+    return { ...options, headers };
+  }
 
   /* =========================================================
      Styles globaux du layout (header + footer)
@@ -42,14 +118,11 @@
 
       body.has-fixed-footer{ padding-bottom: var(--footer-h); }
 
-
-
       .topbar{
-        position: fixed;      /* ✅ toujours visible */
+        position: fixed;
         top: 0;
         left: 0;
         right: 0;
-        /* z-index: 9999; */
         z-index: 1030;
         height: var(--topbar-h);
         display:flex;
@@ -61,10 +134,7 @@
         backdrop-filter: blur(12px);
         border-bottom: 1px solid var(--stroke);
       }
-      body{
-        padding-top: var(--topbar-h);
-      }
-
+      body{ padding-top: var(--topbar-h); }
 
       .brand{
         display:flex;
@@ -140,104 +210,72 @@
         font-weight: 800;
       }
 
-      .btn-danger-soft{
-        border: 1px solid rgba(239,68,68,.35);
-        background: rgba(239,68,68,.18);
-        color: #fff;
-        padding:10px 12px;
-        border-radius: 12px;
-        cursor:pointer;
-        font-weight: 900;
+      .user-chip{
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+        padding: 0 !important;
+        border-radius: 0 !important;
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
       }
-      .btn-danger-soft:hover{ background: rgba(239,68,68,.25); }
+      .user-chip span{
+        color: var(--text);
+        font-weight: 800;
+        opacity: .95;
+      }
+      .user-chip b{ font-weight: 900; }
 
+      .topbar #logoutBtn.btn-danger-soft{
+        display:inline-flex;
+        align-items:center;
+        gap:8px;
+        padding:10px 12px;
+        border-radius:12px;
+        border:1px solid rgba(239,68,68,.25);
+        background: rgba(239,68,68,.12);
+        color: var(--text);
+        font-weight: 800;
+        white-space: nowrap;
+        line-height: 1;
+        height: 40px;
+        cursor:pointer;
+        transition: transform .15s ease, background .15s ease;
+      }
+      .topbar #logoutBtn.btn-danger-soft:hover{
+        transform: translateY(-1px);
+        background: rgba(239,68,68,.2);
+      }
+      .topbar #logoutBtn.btn-danger-soft .btn-ico{
+        width:18px;
+        height:18px;
+        stroke: var(--text);
+      }
 
-      /* ================================
-        Bouton Déconnexion = style ghost
-        ================================ */
-        /* ✅ Déconnexion = exactement comme .btn-ghost (même taille) + teinte rouge */
-        .topbar #logoutBtn.btn-danger-soft{
-          display:inline-flex;
-          align-items:center;
-          gap:8px;
-
-          padding:10px 12px;                 /* identique btn-ghost */
-          border-radius:12px;                /* identique btn-ghost */
-          border:1px solid rgba(239,68,68,.25);
-          background: rgba(239,68,68,.12);
-
-          color: var(--text);
-          font-weight: 800;                  /* ✅ identique btn-ghost (pas 900) */
-          white-space: nowrap;
-          line-height: 1;                    /* ✅ évite que ça “gonfle” */
-          height: 40px;                      /* ✅ force la même hauteur */
+      @media (max-width: 480px){
+        .brand > div { display: none !important; }
+        .topbar .user-chip{ gap: 8px; }
+        .topbar #logoutBtn{
+          padding: 8px 10px;
+          height: 36px;
+          font-size: .85rem;
         }
-
-        .topbar #logoutBtn.btn-danger-soft:hover{
-          transform: translateY(-1px);
-          background: rgba(239,68,68,.2);
-        }
-
-        /* ✅ icône exactement comme les autres */
-        .topbar #logoutBtn.btn-danger-soft .btn-ico{
-          width:18px;
-          height:18px;
-          stroke: var(--text);
-        }
-
-        /* ✅ MOBILE: bouton Déconnexion compact */
-        @media (max-width: 480px){
-
-          /* on réduit l’espace global du bloc user */
-          .topbar .user-chip{
-            gap: 8px;
-          }
-
-          /* bouton logout plus petit */
-          .topbar #logoutBtn{
-            padding: 8px 10px;
-            height: 36px;
-            font-size: .85rem;
-          }
-
-          /* option: masquer le texte "Déconnexion" pour ne garder que l’icône */
-          .topbar #logoutBtn{
-            min-width: 36px;
-            justify-content: center;
-          }
-          .topbar #logoutBtn svg{
-            margin: 0;
-          }
-          .topbar #logoutBtn{
-            gap: 0;
-          }
-          .topbar #logoutBtn{
-            /* masque juste le texte, garde l'icône */
-          }
-          .topbar #logoutBtn{
-            /* on cible le texte après le svg (ton texte est en brut, donc on le masque via span) */
-          }
-        }
-
-
-
+      }
 
       .footer{
         position: fixed;
         left: 0;
         right: 0;
         bottom: 0;
-
-        height: auto;                 /* ✅ ne bloque plus la hauteur */
-        min-height: var(--footer-h);  /* ✅ hauteur minimale */
+        height: auto;
+        min-height: var(--footer-h);
         padding: 10px 16px calc(14px + env(safe-area-inset-bottom));
-
         display:flex;
         align-items:center;
         justify-content:center;
         gap: 12px;
         flex-wrap: wrap;
-
         background: rgba(10,16,28,.55);
         backdrop-filter: blur(10px);
         border-top: 1px solid var(--stroke);
@@ -246,25 +284,13 @@
         font-size: .9rem;
         z-index: 40;
       }
-
-      .footer a{
-        color: var(--muted);
-        text-decoration: none;
-      }
-      .footer a:hover{
-        color: var(--text);
-      }
+      .footer a{ color: var(--muted); text-decoration: none; }
+      .footer a:hover{ color: var(--text); }
 
       @media (max-width: 480px){
-        .footer{
-          font-size: .82rem;
-          gap: 8px;
-        }
-        .footer a{
-          padding: 4px 6px;
-        }
+        .footer{ font-size: .82rem; gap: 8px; }
+        .footer a{ padding: 4px 6px; }
       }
-
 
       .api-status{
         display:flex;
@@ -278,44 +304,9 @@
         border-radius:50%;
         box-shadow: 0 0 6px currentColor;
       }
-      .api-online{
-        background:#22c55e;
-        color:#22c55e;
-      }
-      .api-offline{
-        background:#ef4444;
-        color:#ef4444;
-      }
+      .api-online{ background:#22c55e; color:#22c55e; }
+      .api-offline{ background:#ef4444; color:#ef4444; }
 
-      /* ✅ userChip fondu dans la topbar (pas un cadre) */
-      .user-chip{
-        background: transparent !important;
-        border: none !important;
-        box-shadow: none !important;
-        padding: 0 !important;
-        border-radius: 0 !important;
-        display: inline-flex;
-        align-items: center;
-        gap: 12px;
-      }
-
-      /* Texte plus “header” */
-      .user-chip span{
-        color: var(--text);
-        font-weight: 800;
-        opacity: .95;
-      }
-      .user-chip b{
-        font-weight: 900;
-      }
-
-      /* Bouton logout un peu plus “header” (optionnel) */
-      .user-chip .btn-danger-soft{
-        padding: 10px 12px;
-        border-radius: 12px;
-      }
-
-      /* ✅ Sidebar sticky uniquement sur desktop (évite de casser le offcanvas mobile) */
       @media (min-width: 992px){
         .sidebar{
           position: sticky;
@@ -324,106 +315,136 @@
         }
       }
 
-      /* ✅ Empêche le header de déborder */
       .brand > div { min-width: 0; }
       .brand-title, .brand-sub {
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
       }
-
-      /* ✅ MOBILE : on masque titre + heure */
-      @media (max-width: 480px){
-        #brandTitle { display: none !important; }
-        #currentTime { display: none !important; }
-      }
-
-      /* ✅ MOBILE : on masque TOUT le bloc texte (titre + heure) */
-      @media (max-width: 480px){
-        .brand > div { display: none !important; }  /* <-- le plus important */
-      }
-
-      /* ===== HEADER USER : MOBILE RESPONSIVE ===== */
-@media (max-width: 480px) {
-
-    /* Le span "Bienvenue, nom" passe en colonne */
-    .user-chip > span {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-      line-height: 1.1;
-    }
-
-    /* "Bienvenue," */
-    .user-chip > span {
-      font-size: 0.85rem;
-      font-weight: 700;
-      color: var(--muted);
-    }
-
-    /* Nom + prénom */
-    .user-chip > span b {
-      font-size: 1rem;
-      font-weight: 900;
-      color: var(--text);
-    }
-  }
-
-
-
-
-
-
-
     `;
     document.head.appendChild(style);
   }
 
-
   /* =========================================================
-Refresh token helper (fetchWithRefresh)
-   ✅ gère automatiquement le refresh token si 401 reçu
-   ✅ utilise la bonne API active (PRIMARY ou FALLBACK)
+     Refresh helper (utilise originalFetch pour éviter boucle)
   ========================================================= */
-  const API = window.__API_BASE_ACTIVE__ || API_BASE_PRIMARY;
+  async function refreshAccessToken(baseUrl) {
+    const base = baseUrl || getActiveBase();
+    const originalFetch = window.__ORIGINAL_FETCH__ || fetch;
 
-  async function refreshAccessToken() {
-    const res = await fetch(`${API}/api/auth/refresh`, {
-      method: "POST",
-      credentials: "include",
-      cache: "no-store"
-    });
+    const opts = await withCsrfHeaders(
+      { method: "POST", credentials: "include", cache: "no-store" },
+      base
+    );
+
+    const res = await originalFetch(`${base}${REFRESH_PATH}`, opts);
     return res.ok;
   }
 
-  async function fetchWithRefresh(url, options = {}) {
-    const res1 = await fetch(url, {
-      ...options,
-      credentials: "include",
-      cache: "no-store"
-    });
+  /* =========================================================
+     Fetch global patch : CSRF + refresh-on-401 + queue
+  ========================================================= */
+  let isRefreshing = false;
+  let refreshWaiters = [];
 
-    if (res1.status !== 401) return res1;
-
-    // 401 → on tente refresh
-    const ok = await refreshAccessToken();
-    if (!ok) return res1; // refresh impossible → on reste en 401
-
-    // refresh OK → retry 1 fois
-    return await fetch(url, {
-      ...options,
-      credentials: "include",
-      cache: "no-store"
-    });
+  function waitForRefresh() {
+    return new Promise((resolve) => refreshWaiters.push(resolve));
+  }
+  function resolveRefresh(ok) {
+    refreshWaiters.forEach((r) => r(ok));
+    refreshWaiters = [];
   }
 
+  function isApiUrl(input) {
+    const base = getActiveBase();
+    const url = typeof input === "string" ? input : input?.url;
+    if (!url) return false;
 
+    if (url.startsWith(base)) return true; // URL absolue backend
+    if (url.startsWith("/api/")) return true; // URL relative API
+    return false;
+  }
+
+  async function apiFetch(input, init = {}) {
+    const base = getActiveBase();
+    const originalFetch = window.__ORIGINAL_FETCH__ || fetch;
+
+    init.credentials = init.credentials || "include";
+    init.cache = init.cache || "no-store";
+
+    init = await withCsrfHeaders(init, base);
+
+    const res1 = await originalFetch(input, init);
+    if (res1.status !== 401) return res1;
+
+    if (isRefreshing) {
+      const ok = await waitForRefresh();
+      if (!ok) return res1;
+      const init2 = await withCsrfHeaders({ ...init }, base);
+      return originalFetch(input, init2);
+    }
+
+    isRefreshing = true;
+    try {
+      const ok = await refreshAccessToken(base);
+      resolveRefresh(ok);
+      if (!ok) return res1;
+
+      const init2 = await withCsrfHeaders({ ...init }, base);
+      return originalFetch(input, init2);
+    } finally {
+      isRefreshing = false;
+    }
+  }
+
+  function setupFetchFastPatch() {
+    if (window.__FETCH_PATCHED__) return;
+    window.__FETCH_PATCHED__ = true;
+
+    window.__ORIGINAL_FETCH__ = window.fetch;
+
+    window.fetch = function (input, init) {
+      if (isApiUrl(input)) return apiFetch(input, init);
+      return window.__ORIGINAL_FETCH__(input, init);
+    };
+  }
+
+  // exposer helpers utiles
+  window.ensureCsrfToken = ensureCsrfToken;
+  window.getActiveBase = getActiveBase;
+
+  /* =========================================================
+     fetchWithRefresh helper (compat legacy pages)
+     - garde le même comportement que fetch patché (CSRF + refresh 401)
+     - accepte URL relatives (/api/...) ou absolues
+  ========================================================= */
+  window.fetchWithRefresh = async function fetchWithRefresh(input, init = {}) {
+    const base = getActiveBase();
+
+    // Garantit credentials/cache comme le patch fetch()
+    init = init || {};
+    init.credentials = init.credentials || "include";
+    init.cache = init.cache || "no-store";
+
+    // Ajoute CSRF si méthode unsafe
+    init = await withCsrfHeaders(init, base);
+
+    // Si on reçoit une URL relative /api/..., on la transforme en URL absolue
+    let finalInput = input;
+    if (typeof input === "string" && input.startsWith("/api/")) {
+      finalInput = `${base}${input}`;
+    } else if (input && typeof input === "object" && input.url && input.url.startsWith("/api/")) {
+      finalInput = new Request(`${base}${input.url}`, input);
+    }
+
+    // IMPORTANT :
+    // On appelle le fetch patché (window.fetch) -> il fera refresh sur 401 + retry
+    return fetch(finalInput, init);
+  };
 
 
   /* =========================================================
      Burger (menu) - delegation globale
-     ✅ Fonctionne même si sidebar injectée après
-     ✅ Evite double bind
   ========================================================= */
   function bindBurgerGlobal() {
     if (document.documentElement.dataset.burgerDelegation === "1") return;
@@ -468,7 +489,7 @@ Refresh token helper (fetchWithRefresh)
   }
 
   /* =========================================================
-     HTML HEADER
+     HTML HEADER / FOOTER
   ========================================================= */
   function renderHeader() {
     return `
@@ -498,7 +519,6 @@ Refresh token helper (fetchWithRefresh)
             <span id="authActionText">Se connecter</span>
           </a>
 
-          <!-- ✅ AJOUT : créer un compte -->
           <a href="register.html" class="btn-ghost" id="registerBtn">
             <svg class="btn-ico" viewBox="0 0 24 24" aria-hidden="true">
               <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
@@ -521,14 +541,10 @@ Refresh token helper (fetchWithRefresh)
             </button>
           </div>
         </div>
-
       </header>
     `;
   }
 
-  /* =========================================================
-     HTML FOOTER
-  ========================================================= */
   function renderFooter() {
     return `
       <footer class="footer">
@@ -548,28 +564,18 @@ Refresh token helper (fetchWithRefresh)
   }
 
   /* =========================================================
-     Helpers fetch (userinfo) => AUTH UNIQUEMENT
+     Auth UI (source de vérité = /userinfo)
   ========================================================= */
-  // async function fetchUserInfo(baseUrl) {
-  //   const res = await fetch(`${baseUrl}${USERINFO_PATH}`, {
-  //     method: "GET",
-  //     credentials: "include",
-  //     cache: "no-store"
-  //   });
-
-  //   if (!res.ok) throw new Error(`userinfo ${res.status}`);
-  //   return await res.json();
-  // }
   async function fetchUserInfo(baseUrl) {
-    const res = await fetchWithRefresh(`${baseUrl}${USERINFO_PATH}`, { method: "GET" });
+    // ✅ plus besoin de fetchWithRefresh : fetch() est patché -> refresh auto
+    const res = await fetch(`${baseUrl}${USERINFO_PATH}`, { method: "GET" });
     if (!res.ok) throw new Error(`userinfo ${res.status}`);
     return await res.json();
   }
 
-
   function setAuthUI({ logged, label }) {
-    const authBtn = document.getElementById("authActionBtn");     // Se connecter
-    const registerBtn = document.getElementById("registerBtn");  // Créer un compte
+    const authBtn = document.getElementById("authActionBtn");
+    const registerBtn = document.getElementById("registerBtn");
     const userChip = document.getElementById("userChip");
     const userEmail = document.getElementById("userEmail");
 
@@ -579,7 +585,6 @@ Refresh token helper (fetchWithRefresh)
     const isLoginPage = path.endsWith("/login.html");
     const isRegisterPage = path.endsWith("/register.html");
 
-    // ================= CONNECTÉ =================
     if (logged) {
       authBtn.style.display = "none";
       if (registerBtn) registerBtn.style.display = "none";
@@ -588,39 +593,25 @@ Refresh token helper (fetchWithRefresh)
       return;
     }
 
-    // ================= DÉCONNECTÉ =================
     userChip.style.display = "none";
     userEmail.textContent = "—";
 
-    // login.html → Créer un compte seulement
     if (isLoginPage) {
       authBtn.style.display = "none";
       if (registerBtn) registerBtn.style.display = "inline-flex";
       return;
     }
 
-    // register.html → Se connecter seulement
     if (isRegisterPage) {
       authBtn.style.display = "inline-flex";
       if (registerBtn) registerBtn.style.display = "none";
       return;
     }
 
-    // autres pages → Se connecter seulement
     authBtn.style.display = "inline-flex";
     if (registerBtn) registerBtn.style.display = "none";
   }
 
-
-
-
-
-
-
-  /* =========================================================
-     Auth UI (SOURCE DE VÉRITÉ = /userinfo)
-     ✅ essaie PRIMARY puis FALLBACK (localhost/127)
-  ========================================================= */
   async function checkUserAuthUI() {
     try {
       const data = await fetchUserInfo(API_BASE_PRIMARY);
@@ -642,7 +633,6 @@ Refresh token helper (fetchWithRefresh)
           return;
         }
       }
-
       setAuthUI({ logged: false });
       window.__API_BASE_ACTIVE__ = API_BASE_PRIMARY;
     }
@@ -652,12 +642,11 @@ Refresh token helper (fetchWithRefresh)
      Ping API (alive/down) => 200 OU 401 = API vivante
   ========================================================= */
   async function pingApi(baseUrl) {
-    const res = await fetch(`${baseUrl}${USERINFO_PATH}`, {
+    const res = await (window.__ORIGINAL_FETCH__ || fetch)(`${baseUrl}${USERINFO_PATH}`, {
       method: "GET",
       credentials: "include",
       cache: "no-store"
     });
-
     return (res.status === 200 || res.status === 401);
   }
 
@@ -665,7 +654,7 @@ Refresh token helper (fetchWithRefresh)
     const dot = document.getElementById("apiDot");
     if (!dot) return;
 
-    const basePrimary = window.__API_BASE_ACTIVE__ || API_BASE_PRIMARY;
+    const basePrimary = getActiveBase();
 
     try {
       const okPrimary = await pingApi(basePrimary);
@@ -692,72 +681,58 @@ Refresh token helper (fetchWithRefresh)
     }
   }
 
+  /* =========================================================
+     Visits counter
+  ========================================================= */
   async function loadVisitCount() {
     const base =
-      window.__API_BASE_ACTIVE__ ||
+      getActiveBase() ||
       ((location.hostname === "localhost" || location.hostname === "127.0.0.1")
         ? `http://${location.hostname}:8082`
         : "https://stephanedinahet.fr");
 
-    try {
-      const res = await fetch(`${base}/api/visits`, {
-        method: "GET",
-        credentials: "include"
-      });
+    const el = document.getElementById("visitCount");
+    if (!el) return;
 
-      if (!res.ok) throw new Error("visit fetch failed");
+    try {
+      const key = "visitCountedThisSession";
+      const already = sessionStorage.getItem(key) === "1";
+      const url = already ? `${base}/api/visits/total` : `${base}/api/visits`;
+
+      const res = await fetch(url, { cache: "no-store", credentials: "include" });
+      if (!res.ok) throw new Error("Visits API error");
 
       const data = await res.json();
-      const el = document.getElementById("visitCount");
-      if (el) el.textContent = data.total.toLocaleString("fr-FR");
+      el.textContent = Number(data.total ?? 0).toLocaleString("fr-FR");
+
+      if (!already) sessionStorage.setItem(key, "1");
     } catch (e) {
-      console.warn("Visites indisponibles");
+      console.warn("Visites indisponibles", e);
+      el.textContent = "—";
     }
   }
 
-
   /* =========================================================
-     Logout (toujours retour index.html)
+     Logout
   ========================================================= */
-  // async function logout() {
-  //   const base = window.__API_BASE_ACTIVE__ || API_BASE_PRIMARY;
-
-  //   try {
-  //     await fetch(`${base}${LOGOUT_PATH}`, {
-  //       method: "POST",
-  //       credentials: "include"
-  //     });
-  //   } catch {
-  //     // même si l'API échoue, on force la redirection
-  //   } finally {
-  //     localStorage.removeItem("jwtToken");
-  //     window.location.href = "index.html";
-  //   }
-  // }
   async function logout() {
-    const base = window.__API_BASE_ACTIVE__ || API_BASE_PRIMARY;
+    const base = getActiveBase();
 
     try {
-      await fetch(`${base}${LOGOUT_PATH}`, {
-        method: "POST",
-        credentials: "include"
-      });
+      const opts = await withCsrfHeaders(
+        { method: "POST", credentials: "include", cache: "no-store" },
+        base
+      );
+      await fetch(`${base}${LOGOUT_PATH}`, opts);
     } catch {
-      // même si l'API échoue, on force la déconnexion côté front
+      // ignore
     } finally {
-
-      // 🔥 Nettoyage pagination Tickets
       localStorage.removeItem("tickets.page");
       localStorage.removeItem("tickets.size");
-
-      // (optionnel mais OK si tu l’utilises ailleurs)
       localStorage.removeItem("jwtToken");
-
-      // Redirection propre
       window.location.href = "index.html";
     }
   }
-
 
   function bindLogout() {
     const btn = document.getElementById("logoutBtn");
@@ -782,44 +757,148 @@ Refresh token helper (fetchWithRefresh)
   }
 
   /* =========================================================
-    Visits counter (footer)
+     Analytics
   ========================================================= */
-  async function loadVisitCount() {
+  function bindAnalyticsNavigationTracking() {
+    if (document.documentElement.dataset.analyticsNavBound === "1") return;
+    document.documentElement.dataset.analyticsNavBound = "1";
+
+    document.addEventListener("click", (e) => {
+      const a = e.target.closest("a");
+      if (!a) return;
+      const href = a.getAttribute("href") || "";
+      if (!href || href.startsWith("http") || href.startsWith("#") || href.startsWith("mailto:")) return;
+
+      trackEvent("nav_click", { href });
+    });
+  }
+
+  async function trackEvent(eventType, extra = {}) {
     const base =
-      window.__API_BASE_ACTIVE__ ||
+      getActiveBase() ||
       ((location.hostname === "localhost" || location.hostname === "127.0.0.1")
         ? `http://${location.hostname}:8082`
         : "https://stephanedinahet.fr");
 
-    const el = document.getElementById("visitCount");
-    if (!el) return;
+    const url = `${base}/api/analytics/event`;
 
     try {
-      const key = "visitCountedThisSession";
-      const already = sessionStorage.getItem(key) === "1";
+      const opts = await withCsrfHeaders(
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            eventType,
+            page: window.location.pathname,
+            ts: new Date().toISOString(),
+            extra: {
+              referrer: document.referrer || "-",
+              screen: `${screen.width}x${screen.height}`,
+              ...extra
+            }
+          })
+        },
+        base
+      );
 
-      const url = already ? `${base}/api/visits/total` : `${base}/api/visits`;
-
-      const res = await fetch(url, { cache: "no-store" });
-      if (!res.ok) throw new Error("Visits API error");
-
-      const data = await res.json();
-      el.textContent = Number(data.total ?? 0).toLocaleString("fr-FR");
-
-      if (!already) sessionStorage.setItem(key, "1");
-    } catch (e) {
-      console.warn("Visites indisponibles", e);
-      el.textContent = "—";
+      const res = await fetch(url, opts);
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        console.warn("[analytics] POST failed", res.status, txt);
+      }
+    } catch (err) {
+      console.warn("[analytics] network error", err);
     }
   }
 
+  function trackPageView() {
+    trackEvent("page_view");
+  }
+
+  /* =========================================================
+     Footer height sync
+  ========================================================= */
+  function syncFooterHeight() {
+    const footer = document.querySelector(".footer");
+    if (!footer) return;
+    document.documentElement.style.setProperty("--footer-h", footer.offsetHeight + "px");
+  }
+
+  /* =========================================================
+     Axios patch : CSRF + refresh-on-401
+  ========================================================= */
+  function setupAxiosFastPatch() {
+    if (!window.axios) return;
+    if (window.__AXIOS_PATCHED__) return;
+    window.__AXIOS_PATCHED__ = true;
+
+    axios.defaults.withCredentials = true;
+
+    axios.interceptors.request.use(async (config) => {
+      const method = String(config.method || "GET").toUpperCase();
+      const unsafe = ["POST", "PUT", "PATCH", "DELETE"].includes(method);
+      if (!unsafe) return config;
+
+      const base = getActiveBase();
+      let token = getCookie("XSRF-TOKEN") || csrfCached;
+      if (!token) {
+        await ensureCsrfToken(base);
+        token = getCookie("XSRF-TOKEN") || csrfCached;
+      }
+
+      if (token) {
+        config.headers = config.headers || {};
+        config.headers["X-XSRF-TOKEN"] = token;
+      }
+      return config;
+    });
+
+    let axRefreshing = false;
+    let axQueue = [];
+
+    function axResolve(ok) {
+      axQueue.forEach((r) => r(ok));
+      axQueue = [];
+    }
+
+    axios.interceptors.response.use(
+      (r) => r,
+      async (err) => {
+        const status = err?.response?.status;
+        const original = err?.config;
+
+        if (status !== 401 || !original || original._retry) {
+          if (status === 403) console.warn("[axios] 403 Forbidden", err.response?.data || "");
+          return Promise.reject(err);
+        }
+
+        original._retry = true;
+
+        if (axRefreshing) {
+          const ok = await new Promise((resolve) => axQueue.push(resolve));
+          return ok ? axios(original) : Promise.reject(err);
+        }
+
+        axRefreshing = true;
+        try {
+          const ok = await refreshAccessToken(getActiveBase());
+          axResolve(ok);
+          if (!ok) return Promise.reject(err);
+          return axios(original);
+        } finally {
+          axRefreshing = false;
+        }
+      }
+    );
+  }
 
   /* =========================================================
      Init layout
   ========================================================= */
   function injectLayout() {
     ensureLayoutStyles();
-    bindBurgerGlobal(); // ✅ IMPORTANT : bind une fois pour toutes
+    bindBurgerGlobal();
 
     document.body.classList.add("has-fixed-footer");
 
@@ -829,15 +908,23 @@ Refresh token helper (fetchWithRefresh)
     if (headerMount) headerMount.innerHTML = renderHeader();
     if (footerMount) footerMount.innerHTML = renderFooter();
 
-    // ✅ inutile sur mobile car caché (et économise des ressources)
+    // ✅ Patch fetch/axios très tôt
+    setupFetchFastPatch();
+    setupAxiosFastPatch();
+
+    // ✅ CSRF : prépare le token au chargement
+    ensureCsrfToken(getActiveBase());
+
+    // Heure
     if (!window.matchMedia("(max-width: 480px)").matches) {
       updateParisTime();
       setInterval(updateParisTime, 1000);
     }
 
-
-    // ✅ D'abord auth (détermine parfois la base active), ensuite logout + ping API
+    // Auth puis le reste
     checkUserAuthUI().finally(() => {
+      ensureCsrfToken(getActiveBase());
+
       bindLogout();
 
       checkApiAlive();
@@ -845,9 +932,11 @@ Refresh token helper (fetchWithRefresh)
 
       loadVisitCount();
 
-      trackPageView(); // 📊 LOG AUTOMATIQUE DE LA PAGE
-      bindAnalyticsNavigationTracking(); // ✅ log sur navigation (si tu utilises des liens)
+      trackPageView();
+      bindAnalyticsNavigationTracking();
 
+      syncFooterHeight();
+      window.addEventListener("resize", syncFooterHeight);
     });
 
     document.dispatchEvent(new CustomEvent("layout:ready"));
@@ -855,57 +944,3 @@ Refresh token helper (fetchWithRefresh)
 
   document.addEventListener("DOMContentLoaded", injectLayout);
 })();
-
-
-/* =========================================================
-   📊 Analytics – page view automatique
-   👉 détecte TOUTES les pages automatiquement
-========================================================= */
-function trackPageView() {
-  const base =
-    window.__API_BASE_ACTIVE__ ||
-    ((location.hostname === "localhost" || location.hostname === "127.0.0.1")
-      ? `http://${location.hostname}:8082`
-      : "https://stephanedinahet.fr");
-
-  const url = `${base}/api/analytics/event`;
-
-  fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify({
-      eventType: "page_view",
-      page: window.location.pathname,
-      ts: new Date().toISOString(),
-      extra: {
-        referrer: document.referrer || "-",
-        screen: `${screen.width}x${screen.height}`
-      }
-    })
-  })
-    .then(async (res) => {
-      if (!res.ok) {
-        const txt = await res.text().catch(() => "");
-        console.warn("[analytics] POST failed", res.status, txt);
-      } else {
-        console.log("[analytics] page_view sent:", window.location.pathname);
-      }
-    })
-    .catch((err) => {
-      console.warn("[analytics] network error", err);
-    });
-}
-
-
-function syncFooterHeight(){
-  const footer = document.querySelector(".footer");
-  if (!footer) return;
-  document.documentElement.style.setProperty(
-    "--footer-h",
-    footer.offsetHeight + "px"
-  );
-}
-
-syncFooterHeight();
-window.addEventListener("resize", syncFooterHeight);

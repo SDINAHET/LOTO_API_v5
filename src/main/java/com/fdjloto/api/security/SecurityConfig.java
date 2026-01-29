@@ -28,7 +28,8 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import java.util.Arrays;
 import java.util.List;
 
-
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 
 
 @Configuration
@@ -55,6 +56,10 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+
+        CsrfTokenRequestAttributeHandler requestHandler = new CsrfTokenRequestAttributeHandler();
+        requestHandler.setCsrfRequestAttributeName("_csrf");
+
         return http
                 // ✅ Autoriser les iframes depuis la même origine (Swagger dans ton dashboard)
                 .headers(headers -> headers
@@ -64,11 +69,30 @@ public class SecurityConfig {
                 //     .frameOptions(frame -> frame.sameOrigin()) // ✅ Autoriser les iframes depuis la même origine
                 //     .xssProtection(xss -> xss.disable()) // ✅ Désactiver la protection XSS si nécessaire
                 // )
-                .csrf(csrf -> csrf.disable()) // 🔴 Désactive CSRF pour les APIs REST stateless
+                // .csrf(csrf -> csrf.disable()) // 🔴 Désactive CSRF pour les APIs REST stateless
                 // .csrf(AbstractHttpConfigurer::disable) // ✅ Version optimisée
                 // .anonymous(anonymous -> anonymous.disable()) // Supprime l'authentification anonyme
                 // .cors(cors -> cors.disable()) // 🔴 Désactive CORS (ajoute une config si nécessaire)
                 // .cors(cors -> {}) // ✅ Active CORS, configuration à venir
+                .csrf(csrf -> csrf
+                    // ✅ CSRF token dans un cookie "XSRF-TOKEN" lisible par le front
+                    .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+                    .csrfTokenRequestHandler(requestHandler)
+
+                    // ✅ évite de casser login/register au début
+                    // (tu peux ensuite décider de les protéger aussi, mais d’abord: stable)
+                    .ignoringRequestMatchers(
+                        // "/api/auth/csrf",          // ✅ AJOUT IMPORTANT
+                        "/api/auth/refresh",       // ✅ recommandé
+                        "/api/auth/logout",   // ✅ AJOUTE ÇA
+                        "/api/auth/login3",
+                        "/api/auth/register",
+                        "/api/auth/login4",
+                        "/swagger-ui/**",
+                        "/v3/api-docs/**",
+                        "/api/analytics/**"
+                    )
+                )
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 // .httpBasic(httpBasic -> httpBasic.disable()) // 🔴 Désactive l'authentification basique
                 .sessionManagement(sess -> sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS)) // 🔴 JWT = stateless
@@ -218,7 +242,17 @@ public class SecurityConfig {
             "https://loto-api-black.vercel.app"
         ));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("*"));
+        configuration.setAllowedHeaders(List.of(
+            "Content-Type",
+            "Authorization",
+            "X-XSRF-TOKEN",
+            "X-Requested-With",
+            "Cache-Control",
+            "Pragma"
+        ));
+        configuration.setExposedHeaders(List.of("Set-Cookie"));
+
+        // configuration.setAllowedHeaders(List.of("*"));
         // configuration.setAllowedHeaders(List.of("Content-Type","Authorization","X-Requested-With"));
 	configuration.setAllowCredentials(true); // Important pour cookies JWT
 

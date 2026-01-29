@@ -264,6 +264,24 @@
     }
     .diff-label{ color: rgba(255,255,255,.65); font-weight: 800; }
     .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+
+    .diff-old{
+      color: #ff5b5b;
+      font-weight: 950;
+    }
+
+    .diff-new{
+      color: #39d98a;
+      font-weight: 950;
+    }
+
+    .diff-pill{
+      padding: .12rem .45rem;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(0,0,0,.15);
+    }
+
   </style>
 </head>
 
@@ -383,11 +401,31 @@
 
   <script>
     (function(){
+
+      function getCookie(name){
+        const m = document.cookie.match(new RegExp("(^|;\\s*)" + name + "=([^;]*)"));
+        return m ? decodeURIComponent(m[2]) : null;
+      }
+
+      axios.defaults.withCredentials = true;
+
+      async function ensureCsrf(base){
+        if (window.ensureCsrfToken) {
+          await window.ensureCsrfToken(base); // force la création du cookie XSRF-TOKEN
+        }
+      }
+
       // ===== API
       const API_BASE =
-        (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
-          ? "http://localhost:8082"
-          : "https://stephanedinahet.fr";
+        window.__API_BASE_ACTIVE__ ||
+        ((location.hostname === "localhost" || location.hostname === "127.0.0.1")
+          ? `http://${location.hostname}:8082`
+          : "https://stephanedinahet.fr");
+
+      //const API_BASE =
+      //  (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
+      //    ? "http://localhost:8082"
+      //    : "https://stephanedinahet.fr";
 
       const ME_URL      = `${API_BASE}/api/auth/me`;
       const API_TICKETS = `${API_BASE}/api/tickets`;
@@ -420,6 +458,71 @@
       let original = { drawDate: "", numbers: "", chanceNumber: null };
       let isDirty = false;
       let pendingPayload = null;
+
+
+      function esc(s){
+        return String(s).replace(/[&<>"']/g, c => ({
+          "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+        }[c]));
+      }
+
+      function normNums(str){
+        return (str || "")
+          .split("-")
+          .map(x => parseInt(String(x).trim(), 10))
+          .filter(n => !Number.isNaN(n))
+          .sort((a,b)=>a-b);
+      }
+
+      // ✅ Génère les lignes "Avant/Après" avec couleurs
+      function diffLine(before, after){
+        // dates en FR (comme ton affichage)
+        const bDateFR = esc(isoToFR(before.drawDate || ""));
+        const aDateFR = esc(isoToFR(after.drawDate || ""));
+
+        const bChance = String(before.chanceNumber ?? "");
+        const aChance = String(after.chanceNumber ?? "");
+
+        const bNums = normNums(before.numbers).map(String);
+        const aNums = normNums(after.numbers).map(String);
+
+        // date
+        const dateHtmlBefore = (bDateFR === aDateFR)
+          ? bDateFR
+          : `<span class="diff-old diff-pill">${bDateFR}</span>`;
+
+        const dateHtmlAfter = (bDateFR === aDateFR)
+          ? aDateFR
+          : `<span class="diff-new diff-pill">${aDateFR}</span>`;
+
+        // numéros : on colore UNIQUEMENT ceux qui changent
+        const bSet = new Set(bNums);
+        const aSet = new Set(aNums);
+
+        const numsHtmlBefore = bNums.map(n =>
+          aSet.has(n) ? n : `<span class="diff-old diff-pill">${esc(n)}</span>`
+        ).join("-");
+
+        const numsHtmlAfter = aNums.map(n =>
+          bSet.has(n) ? n : `<span class="diff-new diff-pill">${esc(n)}</span>`
+        ).join("-");
+
+        // chance
+        const chanceHtmlBefore = (bChance === aChance)
+          ? `Chance ${esc(bChance)}`
+          : `Chance <span class="diff-old diff-pill">${esc(bChance)}</span>`;
+
+        const chanceHtmlAfter = (bChance === aChance)
+          ? `Chance ${esc(aChance)}`
+          : `Chance <span class="diff-new diff-pill">${esc(aChance)}</span>`;
+
+        return {
+          before: `${dateHtmlBefore} &nbsp;|&nbsp; ${numsHtmlBefore} &nbsp;|&nbsp; ${chanceHtmlBefore}`,
+          after:  `${dateHtmlAfter} &nbsp;|&nbsp; ${numsHtmlAfter} &nbsp;|&nbsp; ${chanceHtmlAfter}`,
+        };
+      }
+
+
 
       // ===== Date helpers (ISO input / FR display)
       function toISODate(value){
@@ -493,8 +596,13 @@
       function updateDiffUI(){
         const cur = computeCurrent();
 
-        beforeText.textContent = formatTicketText(original);
-        afterText.textContent = formatTicketText(cur);
+        //beforeText.textContent = formatTicketText(original);
+        //afterText.textContent = formatTicketText(cur);
+
+        const d = diffLine(original, cur);
+          beforeText.innerHTML = d.before;
+          afterText.innerHTML  = d.after;
+
 
         const changed =
           (cur.drawDate || "") !== (original.drawDate || "") ||
@@ -723,8 +831,13 @@
         const confirmBtn = document.getElementById("confirmBtn");
 
         // IMPORTANT: affichage FR via formatTicketText
-        modalBefore.textContent = formatTicketText(original);
-        modalAfter.textContent = formatTicketText(payload);
+        //modalBefore.textContent = formatTicketText(original);
+        //modalAfter.textContent = formatTicketText(payload);
+
+        const d = diffLine(original, payload);
+          modalBefore.innerHTML = d.before;
+          modalAfter.innerHTML  = d.after;
+
 
         const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
         modal.show();
@@ -736,15 +849,41 @@
           try{
             setLoading(true);
 
+            //await axios.put(`${API_TICKETS}/${pendingPayload.ticketId}`, pendingPayload.payload, {
+            //  withCredentials: true,
+            //  headers: {
+            //    "Content-Type": "application/json",
+            //    "Accept": "application/json"
+            //  }
+            //});
+
+            await ensureCsrf(API_BASE);
+            const xsrf = getCookie("XSRF-TOKEN");
+
             await axios.put(`${API_TICKETS}/${pendingPayload.ticketId}`, pendingPayload.payload, {
               withCredentials: true,
               headers: {
                 "Content-Type": "application/json",
-                "Accept": "application/json"
+                "Accept": "application/json",
+                ...(xsrf ? { "X-XSRF-TOKEN": xsrf } : {})
               }
             });
 
+            // ✅ redirection avec burst
+            //window.location.href = `tickets.html?refresh=1&ts=${Date.now()}`;
+            window.location.href = `tickets.html?refresh=1&id=${encodeURIComponent(ticketId)}&ts=${Date.now()}`;
+
+            return;
+
+            localStorage.setItem("tickets.refresh", "1");
+            window.location.href = `tickets.html?ts=${Date.now()}`;
+
+
+
             modal.hide();
+
+
+
 
             // reset original => plus dirty
             original = { ...pendingPayload.payload };
@@ -752,13 +891,14 @@
             updateDiffUI();
 
             //showOk("Ticket mis à jour avec succès ✔ Redirection…");
-                showOk("Ticket mis à jour avec succès    Redirection…");
+            //    showOk("Ticket mis à jour avec succès    Redirection…");
             //setTimeout(() => window.location.href = "tickets.html", 1000);
             //setTimeout(() => window.location.href = "tickets.html?burst=1", 1000);
             //window.location.href = `tickets.html?burst=1&ts=${Date.now()}`;
             showOk("Ticket mis à jour avec succès — Redirection…");
             setTimeout(() => {
-              window.location.href = `tickets.html?burst=1&ts=${Date.now()}`;
+              //window.location.href = `tickets.html?burst=1&ts=${Date.now()}`;
+              window.location.href = `tickets.html?refresh=1&ts=${Date.now()}`;
             }, 800);
 
 

@@ -97,15 +97,43 @@ if not any(isinstance(h, RotatingFileHandler) and getattr(h, "baseFilename", "")
 # -----------------------------
 app = FastAPI(title="loto-ai-service", version="3.0.0")
 
-if ALLOWED_ORIGINS_RAW == "*":
-    allow_origins = ["*"]
-else:
-    allow_origins = [x.strip() for x in ALLOWED_ORIGINS_RAW.split(",") if x.strip()]
+# if ALLOWED_ORIGINS_RAW == "*":
+#     allow_origins = ["*"]
+# else:
+#     allow_origins = [x.strip() for x in ALLOWED_ORIGINS_RAW.split(",") if x.strip()]
+
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=allow_origins,
+#     allow_credentials=False,
+#     allow_methods=["*"],
+#     allow_headers=["*"],
+# )
+
+# allow_origins = [
+#     "http://localhost:5500",
+#     "http://127.0.0.1:5500",
+#     "https://stephanedinahet.fr",
+# ]
+
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=allow_origins,
+#     allow_credentials=False,
+#     allow_methods=["*"],
+#     allow_headers=["*"],
+# )
+
+allow_origins = [
+    "http://localhost:5500",
+    "http://127.0.0.1:5500",
+    "https://stephanedinahet.fr",
+]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins,
-    allow_credentials=False,
+    allow_credentials=True,   # ✅ requis si ton front envoie credentials: "include"
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -536,6 +564,16 @@ def health():
         "cors": {"allowed_origins": allow_origins},
         "server_time_utc": datetime.now(tz=UTC_TZ).isoformat(),
     }
+
+@app.get("/")
+def root():
+    return {"status": "ok", "service": "loto-ai-service"}
+
+@app.get("/ai/health")
+def ai_health():
+    # Alias attendu par le frontend
+    return health()
+
 
 @app.get("/ai/latest-draw")
 def latest_draw():

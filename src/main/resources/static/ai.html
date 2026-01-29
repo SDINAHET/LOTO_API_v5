@@ -54,7 +54,7 @@
       padding:2px 6px;
       border-radius:6px;
       border:1px solid var(--border);
-    }
+    }*/
 
     /* Launcher */
     #lt-chat-launcher{
@@ -1370,9 +1370,19 @@
         const r = await fetch(HEALTH_URL);
         if(!r.ok) throw new Error();
         statusEl.innerHTML = "✅ Statut ai-service : <b>OK</b> — " + API_BASE;
-      }catch{
-        statusEl.innerHTML = "❌ Statut ai-service : <b>OFF</b><br/>Lance <code>uvicorn ai:app --host 0.0.0.0 --port 8091</code>";
+      //}catch{
+      //  statusEl.innerHTML = "❌ Statut ai-service : <b>OFF</b><br/>Lance <code>uvicorn ai:app --host 0.0.0.0 --port 8091</code>";
+      //}
+      }catch(err){
+        console.error("HEALTH CHECK ERROR:", err);
+        statusEl.innerHTML =
+          "❌ Statut ai-service : <b>OFF</b><br/>" +
+          "Front=" + location.href + "<br/>" +
+          "Origin=" + location.origin + "<br/>" +
+          "API_BASE=" + API_BASE + "<br/>" +
+          "Détail: " + (err?.message || err);
       }
+
     })();
 
     // Latest draw presets
@@ -1386,20 +1396,19 @@
     })();
   })();
 
-  // Invite auto (1 fois) + état ouvert
-  const invite = document.getElementById("lt-chat-invite");
+  // Invite auto (1 fois)
+  const launcher2 = document.getElementById("lt-chat-launcher");
 
   function showInviteOnce(){
-    // n’affiche qu’une fois par navigateur
     if (localStorage.getItem("LT_INVITE_SEEN") === "1") return;
 
-    launcher.classList.add("lt-invite-show");
-    setTimeout(() => launcher.classList.remove("lt-invite-show"), 4200);
+    launcher2.classList.add("lt-invite-show");
+    setTimeout(() => launcher2.classList.remove("lt-invite-show"), 4200);
     localStorage.setItem("LT_INVITE_SEEN", "1");
   }
 
-  // affiche après un petit délai au chargement
   setTimeout(showInviteOnce, 900);
+
 
   </script>
 </body>
