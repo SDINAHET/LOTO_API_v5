@@ -451,9 +451,9 @@ une documentation exhaustive,
 
 
 # 📘 LOTO TRACKER API
-Portfolio 2025 – Holberton School RENNES
+Portfolio 2026 – Holberton School RENNES
 
-Version : v4.0.0
+Version : v5.0.0
 
 Spécification : OpenAPI 3.0
 
