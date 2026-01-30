@@ -90,7 +90,9 @@ public class SecurityConfig {
                         "/api/auth/login4",
                         "/swagger-ui/**",
                         "/v3/api-docs/**",
-                        "/api/analytics/**"
+                        "/api/analytics/**",
+                        "/api/auth/login-swagger",
+                        "/admin-login.html"
                     )
                 )
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))

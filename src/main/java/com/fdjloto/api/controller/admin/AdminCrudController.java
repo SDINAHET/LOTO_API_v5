@@ -418,4 +418,33 @@ public class AdminCrudController {
         ticketGainRepository.deleteById(id);
         return ResponseEntity.noContent().build();
     }
+
+
+    @GetMapping("/admin/dashboard")
+    public String adminDashboard() {
+        return """
+    <!DOCTYPE html>
+    <html lang="fr">
+    <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Console admin</title>
+    </head>
+    <body style="background:#020617;color:#e5e7eb;font-family:system-ui,sans-serif;margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;">
+    <div style="background:#0f172a;border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:24px;max-width:560px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.45);">
+        <h1 style="margin:0 0 10px;font-size:1.3rem;">Console admin</h1>
+        <p style="margin:0 0 18px;color:#9ca3af;font-size:.95rem;">
+        Connexion OK. Accès à Swagger :
+        </p>
+
+        <a href="/swagger-ui/index.html"
+        style="display:inline-block;padding:10px 14px;border-radius:999px;background:#22c55e;color:#020617;text-decoration:none;font-weight:700;">
+        Ouvrir Swagger
+        </a>
+    </div>
+    </body>
+    </html>
+    """;
+    }
+
 }

@@ -704,8 +704,8 @@ public class AdminLoginController {
     <meta charset="UTF-8">
     <title>Login admin - Swagger</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="icon" href="http://localhost:5500/favicon-admin.ico">
-    <link rel="icon" href="https://stephanedinahet.fr/favicon-admin.ico">
+    <link rel="icon" href="/favicon-admin.ico">
+
 
 <style>
   /* Base inputs (au cas où le navigateur force un style) */
@@ -742,11 +742,24 @@ public class AdminLoginController {
     transition: background-color 9999s ease-out 0s;
   }
 
-  /* Optionnel (selon versions Chrome) */
-  input:-internal-autofill-selected {
+    /* Standard-ish */
+    input:autofill {
     background-color: #020617 !important;
     color: #e5e7eb !important;
-  }
+    }
+
+    /* Chrome/Safari (déjà OK chez toi) */
+    input:-webkit-autofill,
+    input:-webkit-autofill:hover,
+    input:-webkit-autofill:focus {
+    -webkit-text-fill-color: #e5e7eb !important;
+    caret-color: #e5e7eb !important;
+    -webkit-box-shadow: 0 0 0 1000px #020617 inset !important;
+            box-shadow: 0 0 0 1000px #020617 inset !important;
+    border: 1px solid #4b5563 !important;
+    }
+
+
 </style>
 </head>
 <body style="background:#020617;color:#e5e7eb;font-family:system-ui, sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0">
@@ -855,10 +868,8 @@ public class AdminLoginController {
 
 <script>
     // 🔧 BASE URL dynamique : local vs prod
-    const API_BASE =
-        (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
-            ? "http://localhost:8082"
-            : "https://stephanedinahet.fr";
+    const API_BASE = window.location.origin;
+
 
     const form = document.getElementById("adminLoginForm");
     const errorMsg = document.getElementById("errorMsg");
@@ -888,7 +899,8 @@ public class AdminLoginController {
     const emailStatus = document.getElementById("emailStatus");
 
     // IMPORTANT: dans un text block Java, il faut doubler les backslashes
-    const EMAIL_REGEX = /^(?=.{6,254}$)(?=.{1,64}@)[A-Za-z0-9]+([._%+-][A-Za-z0-9]+)*@([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z]{2,}$/;
+    // const EMAIL_REGEX = /^(?=.{6,254}$)(?=.{1,64}@)[A-Za-z0-9]+([._%+-][A-Za-z0-9]+)*@([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z]{2,}$/;
+    const EMAIL_REGEX = new RegExp("^(?=.{6,254}$)(?=.{1,64}@)[A-Za-z0-9]+([._%+-][A-Za-z0-9]+)*@([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z]{2,}$");
 
     const ICON_OK = `
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
@@ -1177,7 +1189,9 @@ public class AdminLoginController {
             }
 
             // window.location.href = API_BASE + "/swagger-ui/index.html";
-            window.location.href = API_BASE + "/admin/dashboard";
+            //window.location.href = API_BASE + "/admin/dashboard";
+            window.location.href = "/admin/dashboard";
+
 
         } catch (err) {
             console.error(err);
