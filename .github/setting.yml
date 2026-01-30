@@ -2,7 +2,7 @@
 repository:
   name: "Loto_API"  # ✅ Nom du dépôt corrigé
   description: "API for tracking loto results / API pour la gestion et le suivi des gains Loto."
-  homepage: "https://github.com/SDINAHET/Loto_API_v2"  # ✅ Lien mis à jour
+  homepage: "https://github.com/SDINAHET/Loto_API_v5"  # ✅ Lien mis à jour
   topics: [loto, api, spring-boot, java, jwt, security]
   default_branch: main
   visibility: public  # public ou private selon ton besoin
