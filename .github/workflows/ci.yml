@@ -99,11 +99,15 @@ jobs:
           curl -s -o register.json -w "\nHTTP=%{http_code}\n" \
             -X POST "http://localhost:8082/api/auth/register" \
             -H "Content-Type: application/json" \
-            -d '{"email":"ci-user@loto.local","password":"StrongPass123!"}' || true
+            -d '{
+              "email":"ci-user@loto.local",
+              "password":"StrongPass123!",
+              "firstName":"CI",
+              "lastName":"Runner"
+            }' || true
           cat register.json | jq . || cat register.json || true
 
       - name: 🔑 Login & extract JWT
-        id: login
         run: |
           curl -s -o login.json -w "\nHTTP=%{http_code}\n" \
             -X POST "http://localhost:8082/api/auth/login3" \
@@ -114,11 +118,10 @@ jobs:
           JWT_TOKEN=$(jq -r '.token // empty' login.json)
           if [ -z "$JWT_TOKEN" ]; then
             echo "❌ No token returned by login"
-            docker compose logs --no-color backend
             exit 1
           fi
-
           echo "JWT_TOKEN=$JWT_TOKEN" >> "$GITHUB_ENV"
+
 
       - name: 🎫 Create Ticket (JWT)
         run: |
