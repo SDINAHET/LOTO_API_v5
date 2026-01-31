@@ -814,4 +814,60 @@ docker compose -f docker-compose.test.yml up --build --abort-on-container-exit -
 docker compose -f docker-compose.test.yml down -v
 docker compose -f docker-compose.test.yml up --build --abort-on-container-exit
 
+
+
+root@batriviere-serv1:~/Loto_API_prod/src/main/resources/static# sudo chmod -x /root/.nvm/versions/node/v20.19.2/bin/htt
+p-server
+root@batriviere-serv1:~/Loto_API_prod/src/main/resources/static# sudo chmod +x /root/.nvm/versions/node/v20.19.2/bin/htt
+p-server
+root@batriviere-serv1:~/Loto_API_prod/src/main/resources/static# lsof -i :5500
+COMMAND    PID     USER   FD   TYPE    DEVICE SIZE/OFF NODE NAME
+apache2 471765 www-data   44u  IPv4 156272529      0t0  TCP localhost:57356->localhost:5500 (CLOSE_WAIT)
+apache2 471766 www-data   44u  IPv4 156282032      0t0  TCP localhost:55852->localhost:5500 (CLOSE_WAIT)
+apache2 471767 www-data   44u  IPv4 156281107      0t0  TCP localhost:35594->localhost:5500 (CLOSE_WAIT)
+apache2 471768 www-data   44u  IPv4 156275245      0t0  TCP localhost:57354->localhost:5500 (CLOSE_WAIT)
+apache2 471801 www-data   44u  IPv4 156272531      0t0  TCP localhost:57360->localhost:5500 (CLOSE_WAIT)
+apache2 471968 www-data   44u  IPv4 156273245      0t0  TCP localhost:58362->localhost:5500 (CLOSE_WAIT)
+apache2 478177 www-data   44u  IPv4 156272533      0t0  TCP localhost:57376->localhost:5500 (CLOSE_WAIT)
+apache2 478178 www-data   44u  IPv4 156273428      0t0  TCP localhost:57342->localhost:5500 (CLOSE_WAIT)
+root@batriviere-serv1:~/Loto_API_prod/src/main/resources/static# http-server -p 5500
+
+
+export default {
+  async fetch(request) {
+    const ORIGIN = "https://stephanedinahet.fr";
+    const MAINTENANCE = "https://maintenance2-30r.pages.dev/";
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2500);
+
+    try {
+      const url = new URL(request.url);
+      const target = ORIGIN + url.pathname + url.search;
+
+      const res = await fetch(target, {
+        method: request.method,
+        headers: request.headers,
+        body: ["GET", "HEAD"].includes(request.method) ? null : request.body,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+
+      if ([502, 503, 504].includes(res.status)) {
+        return Response.redirect(MAINTENANCE, 302);
+      }
+
+      return res;
+    } catch (e) {
+      clearTimeout(timeout);
+      return fetch(MAINTENANCE);
+    }
+  },
+};
+
+
+cd src/main/resources/static
+npx http-server -a 0.0.0.0 -p 5500
+
 ```
