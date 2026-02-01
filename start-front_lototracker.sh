@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_DIR="/root/Loto_API_prod"
+#APP_DIR="/root/Loto_API_prod"
+APP_DIR="/root/Loto_API_prod/src/main/resources/static"
 PORT="5500"
 LOG_DIR="/var/log/lototracker-front"
 LOG_FILE="$LOG_DIR/http-server.log"
