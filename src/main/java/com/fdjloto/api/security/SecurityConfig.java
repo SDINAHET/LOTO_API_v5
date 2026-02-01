@@ -88,6 +88,8 @@ public class SecurityConfig {
                         "/api/auth/login3",
                         "/api/auth/register",
                         "/api/auth/login4",
+                        "/api/health",
+                        "/api/hello",
                         "/swagger-ui/**",
                         "/v3/api-docs/**",
                         "/api/analytics/**",
@@ -126,6 +128,15 @@ public class SecurityConfig {
                 )
 
                 .authorizeHttpRequests(auth -> auth
+                        // =====================
+                        // 🔓 PUBLIC ENDPOINTS
+                        // =====================
+                        .requestMatchers("/actuator/health").permitAll()
+                        .requestMatchers(
+                            "/api/health",
+                            "/api/hello"
+                        ).permitAll()
+
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/visits/**").permitAll()
                         // .requestMatchers(
